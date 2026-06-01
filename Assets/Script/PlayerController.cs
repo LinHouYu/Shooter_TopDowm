@@ -2,87 +2,82 @@ using UnityEngine;
 using UnityEngine.InputSystem;
  
 /// <summary>
-/// Controls player movement and rotation for a 3D top-down shooter prototype.
+/// Controls player movement, rotation, dashing, and shooting for a 3D top-down shooter prototype.
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
+    [Header("Movement Settings")]
+    [SerializeField] private float moveSpeed = 5f;
+    [SerializeField] private float gravity = -9.81f;
+    [SerializeField] private float rotationSpeed = 20f;
+
+    [Header("Dash Settings")]
+    [SerializeField] private float dashSpeed = 15f;
+    [SerializeField] private float dashDuration = 0.2f;
+    [SerializeField] private float dashCooldown = 1f;
+
+    // ======== 新增：射击设置 ========
+    [Header("Shooting Settings")]
     [SerializeField]
-    [Tooltip("Movement speed in units per second.")]
-    private float moveSpeed = 5f;
- 
+    [Tooltip("The bullet prefab to spawn.")]
+    private GameObject bulletPrefab;
+
     [SerializeField]
-    [Tooltip("Initial upward velocity applied when jumping.")]
-    private float jumpForce = 5f;
- 
+    [Tooltip("The transform where the bullet will be spawned (e.g., the gun barrel).")]
+    private Transform firePoint;
+
     [SerializeField]
-    [Tooltip("Gravity applied manually because CharacterController does not apply physics gravity by itself.")]
-    private float gravity = -9.81f;
- 
-    [SerializeField]
-    [Tooltip("Rotation interpolation speed.")]
-    private float rotationSpeed = 20f;
+    [Tooltip("Time between shots in seconds.")]
+    private float fireRate = 0.2f;
+    // =================================
  
     private Camera mainCamera;
     private CharacterController characterController;
     private Vector2 moveInput;
     private Vector3 lookTarget;
     private float verticalVelocity;
-    private bool isJumping;
+
+    private bool isDashing;
+    private float dashTimeLeft;
+    private float dashCooldownTimer;
+    private Vector3 dashDirection;
+
+    // 射击冷却计时器
+    private float fireTimer;
  
     private void Awake()
     {
         characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
     }
- 
-    // public void OnMove(InputAction.CallbackContext context)
-    // {
-    //     moveInput = context.ReadValue<Vector2>();
-    // }
-    //
-    // public void OnJump(InputAction.CallbackContext context)
-    // {
-    //     if (context.performed && characterController.isGrounded)
-    //     {
-    //         verticalVelocity = jumpForce;
-    //         isJumping = true;
-    //     }
-    // }
-    //
-    // public void MouseLook(InputAction.CallbackContext context)
-    // {
-    //     Vector2 mouseScreenPosition = context.ReadValue<Vector2>();
-    //
-    //     Ray ray = mainCamera.ScreenPointToRay(mouseScreenPosition);
-    //     Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
-    //
-    //     if (groundPlane.Raycast(ray, out float enter))
-    //     {
-    //         lookTarget = ray.GetPoint(enter);
-    //     }
-    // }
     
     public void OnMove(InputValue value)
     {
-        // 从 InputValue 中读取 Vector2 的移动数据
         moveInput = value.Get<Vector2>();
     }
 
-    public void OnJump(InputValue value)
+    public void OnDash(InputValue value)
     {
-        // 只有在按下按键 (isPressed) 并且角色在地面上时，才执行跳跃 
-        if (value.isPressed && characterController.isGrounded)
+        if (value.isPressed && dashCooldownTimer <= 0f && !isDashing)
         {
-            verticalVelocity = jumpForce;
-            isJumping = true;
+            StartDash();
         }
     }
 
-    // 注意：这里名字必须叫 OnLook，才能和 Input Actions 里的 Look 动作匹配
+    // ======== 新增：接收开火输入 ========
+    public void OnFire(InputValue value)
+    {
+        // 如果按下按键，并且射击冷却已经结束
+        if (value.isPressed && fireTimer <= 0f)
+        {
+            Shoot();
+        }
+    }
+    // =================================
+
     public void OnLook(InputValue value)
     {
-        // 从 InputValue 中读取鼠标的屏幕坐标
         Vector2 mouseScreenPosition = value.Get<Vector2>();
 
         Ray ray = mainCamera.ScreenPointToRay(mouseScreenPosition);
@@ -96,33 +91,68 @@ public class PlayerController : MonoBehaviour
  
     private void Update()
     {
+        HandleTimers(); // 更新所有冷却时间
         ApplyGravity();
         MovePlayer();
         RotateTowardsMouse();
     }
- 
-    private void ApplyGravity()
+
+    private void HandleTimers()
     {
-        if (characterController.isGrounded)
+        // 冲刺冷却
+        if (dashCooldownTimer > 0) dashCooldownTimer -= Time.deltaTime;
+        if (isDashing)
         {
-            if (!isJumping)
-            {
-                verticalVelocity = -1f;
-            }
- 
-            isJumping = false;
+            dashTimeLeft -= Time.deltaTime;
+            if (dashTimeLeft <= 0) isDashing = false;
+        }
+
+        // 射击冷却
+        if (fireTimer > 0) fireTimer -= Time.deltaTime;
+    }
+
+    // ======== 新增：射击逻辑 ========
+    private void Shoot()
+    {
+        fireTimer = fireRate; // 重置冷却时间
+
+        if (bulletPrefab != null && firePoint != null)
+        {
+            // 在 FirePoint 的位置，以 FirePoint 的旋转角度，生成子弹
+            Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
         }
         else
         {
-            verticalVelocity += gravity * Time.deltaTime;
+            Debug.LogWarning("Bullet Prefab or Fire Point is not assigned in the Inspector!");
         }
+    }
+    // =================================
+
+    private void StartDash()
+    {
+        isDashing = true;
+        dashTimeLeft = dashDuration;
+        dashCooldownTimer = dashCooldown;
+
+        if (moveInput.sqrMagnitude > 0.01f)
+            dashDirection = new Vector3(moveInput.x, 0f, moveInput.y).normalized;
+        else
+            dashDirection = transform.forward;
+    }
+ 
+    private void ApplyGravity()
+    {
+        if (characterController.isGrounded) verticalVelocity = -1f;
+        else verticalVelocity += gravity * Time.deltaTime;
     }
  
     private void MovePlayer()
     {
-        Vector3 movement = new Vector3(moveInput.x, 0f, moveInput.y) * moveSpeed;
+        Vector3 movement = isDashing 
+            ? dashDirection * dashSpeed 
+            : new Vector3(moveInput.x, 0f, moveInput.y) * moveSpeed;
+
         movement.y = verticalVelocity;
- 
         characterController.Move(movement * Time.deltaTime);
     }
  
@@ -131,10 +161,7 @@ public class PlayerController : MonoBehaviour
         Vector3 lookDirection = lookTarget - transform.position;
         lookDirection.y = 0f;
  
-        if (lookDirection.sqrMagnitude <= 0.001f)
-        {
-            return;
-        }
+        if (lookDirection.sqrMagnitude <= 0.001f) return;
  
         Quaternion targetRotation = Quaternion.LookRotation(lookDirection);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);

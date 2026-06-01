@@ -2,26 +2,34 @@ using UnityEngine;
 
 public class Bullet : MonoBehaviour
 {
-    public float speed = 20f; // 子弹飞行速度
-    public float lifeTime = 3f; // 子弹存活时间（秒），防止飞出地图永远消耗内存
+    [SerializeField]
+    [Tooltip("How fast the bullet travels.")]
+    private float speed = 20f;
+
+    [SerializeField]
+    [Tooltip("How long the bullet lives before destroying itself.")]
+    private float lifeTime = 3f;
 
     private void Start()
     {
-        // 子弹生成 3 秒后自动销毁
+        // 子弹生成后，开始倒计时，时间到了就自动销毁（防止占内存）
         Destroy(gameObject, lifeTime);
     }
 
     private void Update()
     {
-        // 让子弹每一帧都朝着自己的“正前方”移动
+        // 每一帧让子弹沿着自己的正前方（Z轴）移动
         transform.Translate(Vector3.forward * speed * Time.deltaTime);
     }
     
-    // 如果子弹撞到东西（以后可以加敌人或者墙壁的逻辑）
+    // 如果子弹碰到带有 Collider 的物体，可以在这里处理伤害和销毁
     private void OnTriggerEnter(Collider other)
     {
-        // 目前撞到任何带有 Collider 的东西就销毁自己
-        // 注意：稍后如果子弹一出生就撞到玩家自己，我们需要特殊处理
-        Destroy(gameObject);
+        // 例如：如果碰到的不是玩家，就销毁子弹
+        if (!other.CompareTag("Player"))
+        {
+            // TODO: 这里可以加上敌人掉血的代码
+            Destroy(gameObject);
+        }
     }
 }

@@ -801,14 +801,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   moveSpeed: 5
+  jumpForce: 5
   gravity: -9.81
   rotationSpeed: 20
-  dashSpeed: 15
-  dashDuration: 0.2
-  dashCooldown: 1
-  bulletPrefab: {fileID: 685780486080150314, guid: 53db38d82ef58794b9d8f2ee1573f5e4, type: 3}
-  firePoint: {fileID: 1945513476}
-  fireRate: 0.2
 --- !u!143 &544770125
 CharacterController:
   m_ObjectHideFlags: 0

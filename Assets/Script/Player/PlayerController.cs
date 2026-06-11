@@ -2,11 +2,19 @@ using UnityEngine;
 using UnityEngine.InputSystem;
  
 /// <summary>
-/// Controls player movement, rotation, dashing, and shooting for a 3D top-down shooter prototype.
+/// Controls player movement, rotation, dashing, shooting, and communicates with the UIManager.
 /// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
+    [Header("UI Reference")]
+    [Tooltip("拖入挂载了 PlayerUIManager 的物体")]
+    [SerializeField] private PlayerUIManager uiManager;
+
+    [Header("Health Settings")]
+    [SerializeField] private int maxHealth = 100;
+    private int currentHealth;
+
     [Header("Movement Settings")]
     [SerializeField] private float moveSpeed = 5f;
     [SerializeField] private float gravity = -9.81f;
@@ -17,19 +25,18 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float dashDuration = 0.2f;
     [SerializeField] private float dashCooldown = 1f;
 
-    // ======== 新增：射击设置 ========
     [Header("Shooting Settings")]
-    [SerializeField]
-    [Tooltip("The bullet prefab to spawn.")]
-    private GameObject bulletPrefab;
-
-    [SerializeField]
-    [Tooltip("The transform where the bullet will be spawned (e.g., the gun barrel).")]
-    private Transform firePoint;
-
-    [SerializeField]
-    [Tooltip("Time between shots in seconds.")]
-    private float fireRate = 0.2f;
+    [SerializeField] private GameObject bulletPrefab;
+    [SerializeField] private Transform firePoint;
+    [SerializeField] private float fireRate = 0.2f;
+    
+    // ======== 新增：子弹与换弹设置 ========
+    [Header("Ammo Settings")]
+    [SerializeField] private int maxAmmo = 12;       // 最大弹匣12发
+    [SerializeField] private float reloadTime = 1.5f; // 换弹所需时间
+    private int currentAmmo;
+    private bool isReloading = false;
+    private float reloadTimer;
     // =================================
  
     private Camera mainCamera;
@@ -43,13 +50,26 @@ public class PlayerController : MonoBehaviour
     private float dashCooldownTimer;
     private Vector3 dashDirection;
 
-    // 射击冷却计时器
     private float fireTimer;
  
     private void Awake()
     {
         characterController = GetComponent<CharacterController>();
         mainCamera = Camera.main;
+    }
+
+    private void Start()
+    {
+        // 初始化数据并刷新一次UI
+        currentHealth = maxHealth;
+        currentAmmo = maxAmmo;
+
+        if (uiManager != null)
+        {
+            uiManager.UpdateHealthUI(currentHealth, maxHealth);
+            uiManager.UpdateDashUI(1f, 0f);
+            uiManager.UpdateAmmoUI(currentAmmo, maxAmmo, false);
+        }
     }
     
     public void OnMove(InputValue value)
@@ -65,13 +85,30 @@ public class PlayerController : MonoBehaviour
         }
     }
 
-    // ======== 新增：接收开火输入 ========
     public void OnFire(InputValue value)
     {
-        // 如果按下按键，并且射击冷却已经结束
-        if (value.isPressed && fireTimer <= 0f)
+        // 只有按下按键，射击冷却结束，且不在换弹时才能射击
+        if (value.isPressed && fireTimer <= 0f && !isReloading)
         {
-            Shoot();
+            if (currentAmmo > 0)
+            {
+                Shoot();
+            }
+            else
+            {
+                // 如果没子弹了还尝试开火，自动触发换弹
+                StartReload();
+            }
+        }
+    }
+
+    // ======== 新增：手动换弹输入 ========
+    // 前提：在 Input System 中设置一个 Action 叫 Reload，绑定R键
+    public void OnReload(InputValue value)
+    {
+        if (value.isPressed && !isReloading && currentAmmo < maxAmmo)
+        {
+            StartReload();
         }
     }
     // =================================
@@ -91,7 +128,7 @@ public class PlayerController : MonoBehaviour
  
     private void Update()
     {
-        HandleTimers(); // 更新所有冷却时间
+        HandleTimers(); 
         ApplyGravity();
         MovePlayer();
         RotateTowardsMouse();
@@ -99,8 +136,17 @@ public class PlayerController : MonoBehaviour
 
     private void HandleTimers()
     {
-        // 冲刺冷却
-        if (dashCooldownTimer > 0) dashCooldownTimer -= Time.deltaTime;
+        if (dashCooldownTimer > 0) 
+        {
+            dashCooldownTimer -= Time.deltaTime;
+            if (uiManager != null) 
+                uiManager.UpdateDashUI(1f - (dashCooldownTimer / dashCooldown), dashCooldownTimer);
+        }
+        else if (!isDashing && uiManager != null) // CD结束
+        {
+            uiManager.UpdateDashUI(1f, 0f);
+        }
+
         if (isDashing)
         {
             dashTimeLeft -= Time.deltaTime;
@@ -109,16 +155,27 @@ public class PlayerController : MonoBehaviour
 
         // 射击冷却
         if (fireTimer > 0) fireTimer -= Time.deltaTime;
+
+        if (isReloading)
+        {
+            reloadTimer -= Time.deltaTime;
+            if (reloadTimer <= 0f)
+            {
+                isReloading = false;
+                currentAmmo = maxAmmo;
+                if (uiManager != null) uiManager.UpdateAmmoUI(currentAmmo, maxAmmo, false);
+            }
+        }
     }
 
-    // ======== 新增：射击逻辑 ========
     private void Shoot()
     {
-        fireTimer = fireRate; // 重置冷却时间
+        fireTimer = fireRate; 
+        currentAmmo--; // 消耗子弹
+        if (uiManager != null) uiManager.UpdateAmmoUI(currentAmmo, maxAmmo, false); // 更新UI
 
         if (bulletPrefab != null && firePoint != null)
         {
-            // 在 FirePoint 的位置，以 FirePoint 的旋转角度，生成子弹
             Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
         }
         else
@@ -126,7 +183,13 @@ public class PlayerController : MonoBehaviour
             Debug.LogWarning("Bullet Prefab or Fire Point is not assigned in the Inspector!");
         }
     }
-    // =================================
+
+    private void StartReload()
+    {
+        isReloading = true;
+        reloadTimer = reloadTime;
+        if (uiManager != null) uiManager.UpdateAmmoUI(currentAmmo, maxAmmo, true);
+    }
 
     private void StartDash()
     {
@@ -165,5 +228,19 @@ public class PlayerController : MonoBehaviour
  
         Quaternion targetRotation = Quaternion.LookRotation(lookDirection);
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+    }
+
+   
+    public void TakeDamage(int damage)
+    {
+        currentHealth -= damage;
+        currentHealth = Mathf.Max(0, currentHealth);
+        if (uiManager != null) uiManager.UpdateHealthUI(currentHealth, maxHealth);
+
+        if (currentHealth <= 0)
+        {
+            // 死亡逻辑可以在这里添加
+            Debug.Log("Player Died!");
+        }
     }
 }

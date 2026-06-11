@@ -3,6 +3,12 @@ using UnityEngine;
 [RequireComponent(typeof(CharacterController))]
 public class EnemyAI : MonoBehaviour
 {
+    // ======== 新增：敌人生命值设置 ========
+    [Header("Health Settings")]
+    public int maxHealth = 50;
+    private int currentHealth;
+    // =====================================
+
     [Header("Movement & Distances")]
     public float detectionRadius = 15f;
     public float idealDistance = 8f;
@@ -19,7 +25,6 @@ public class EnemyAI : MonoBehaviour
     public float wanderRadius = 5f;
     public float wanderTimer = 2f;
 
-    // ======== 新增：射击设置 ========
     [Header("Shooting Settings")]
     [Tooltip("敌人的子弹预制体")]
     public GameObject bulletPrefab;
@@ -27,7 +32,6 @@ public class EnemyAI : MonoBehaviour
     public Transform firePoint;
     [Tooltip("射击间隔时间（秒）")]
     public float fireRate = 1.5f;
-    // =================================
 
     private Transform player;
     private CharacterController characterController;
@@ -41,7 +45,6 @@ public class EnemyAI : MonoBehaviour
     private Vector3 wanderTarget;
     private float timer;
     
-    // 射击冷却计时器
     private float fireTimer;
 
     private void Awake()
@@ -53,6 +56,9 @@ public class EnemyAI : MonoBehaviour
             player = playerObj.transform;
         }
         SetNewWanderTarget();
+
+        // ======== 新增：初始化血量 ========
+        currentHealth = maxHealth;
     }
 
     private void Update()
@@ -89,9 +95,7 @@ public class EnemyAI : MonoBehaviour
         if (timer > 0) timer -= Time.deltaTime;
         else SetNewWanderTarget();
 
-        // ======== 新增：更新射击冷却 ========
         if (fireTimer > 0) fireTimer -= Time.deltaTime;
-        // =====================================
     }
 
     private void ApplyGravity()
@@ -118,26 +122,21 @@ public class EnemyAI : MonoBehaviour
         movement.y = verticalVelocity;
         characterController.Move(movement * Time.deltaTime);
 
-        // ======== 新增：开火逻辑 ========
-        // 如果玩家在视野内，且射击冷却完毕，则开火
         if (fireTimer <= 0f)
         {
             ShootAtPlayer();
         }
-        // =================================
     }
 
-    // ======== 新增：执行射击 ========
     private void ShootAtPlayer()
     {
-        fireTimer = fireRate; // 重置射击冷却
+        fireTimer = fireRate; 
 
         if (bulletPrefab != null && firePoint != null)
         {
             Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
         }
     }
-    // =================================
 
     private void WanderBehavior()
     {
@@ -167,7 +166,8 @@ public class EnemyAI : MonoBehaviour
         Collider[] hits = Physics.OverlapSphere(transform.position, bulletDetectionRadius);
         foreach (Collider hit in hits)
         {
-            if (hit.CompareTag("PlayerBullet")) 
+            // 这里原来是 PlayerBullet，为了保险我把它改成了检查玩家子弹的统一方式
+            if (hit.GetComponent<Bullet>() != null) 
             {
                 StartDodge(hit.transform.position);
                 return true;
@@ -198,6 +198,28 @@ public class EnemyAI : MonoBehaviour
         if (dodgeTimeLeft <= 0) isDodging = false;
     }
 
+// ======== 敌人受伤与死亡逻辑 ========
+    public void TakeDamage(int damage)
+    {
+        currentHealth -= damage;
+        Debug.Log($"敌人受到 {damage} 点伤害，剩余血量: {currentHealth}");
+
+        if (currentHealth <= 0)
+        {
+            Debug.Log("敌人被击杀了！");
+            
+            // --- 新增：调用 ScoreManager 加 10 分 ---
+            if (ScoreManager.Instance != null)
+            {
+                ScoreManager.Instance.AddScore(10);
+            }
+            // ----------------------------------------
+            
+            Destroy(gameObject); // 销毁敌人
+        }
+    }
+    // ==========================================
+
     private void OnDrawGizmosSelected()
     {
         Gizmos.color = Color.yellow;
@@ -207,4 +229,6 @@ public class EnemyAI : MonoBehaviour
         Gizmos.color = Color.cyan;
         Gizmos.DrawWireSphere(transform.position, bulletDetectionRadius);
     }
+    
+    
 }

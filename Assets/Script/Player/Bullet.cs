@@ -10,25 +10,36 @@ public class Bullet : MonoBehaviour
     [Tooltip("How long the bullet lives before destroying itself.")]
     private float lifeTime = 3f;
 
+    [SerializeField]
+    [Tooltip("子弹造成的伤害")]
+    private int damage = 10; // 新增：伤害值
+
     private void Start()
     {
-        // 子弹生成后，开始倒计时，时间到了就自动销毁（防止占内存）
         Destroy(gameObject, lifeTime);
     }
 
     private void Update()
     {
-        // 每一帧让子弹沿着自己的正前方（Z轴）移动
         transform.Translate(Vector3.forward * speed * Time.deltaTime);
     }
     
-    // 如果子弹碰到带有 Collider 的物体，可以在这里处理伤害和销毁
     private void OnTriggerEnter(Collider other)
     {
-        // 例如：如果碰到的不是玩家，就销毁子弹
+        // 碰到的不是玩家自己，就准备销毁
         if (!other.CompareTag("Player"))
         {
-            // TODO: 这里可以加上敌人掉血的代码
+            // 新增：如果碰到的是敌人，让敌人扣血
+            if (other.CompareTag("Enemy"))
+            {
+                EnemyAI enemy = other.GetComponent<EnemyAI>();
+                if (enemy != null)
+                {
+                    enemy.TakeDamage(damage);
+                }
+            }
+            
+            // 造成伤害（或打到墙壁）后销毁子弹
             Destroy(gameObject);
         }
     }

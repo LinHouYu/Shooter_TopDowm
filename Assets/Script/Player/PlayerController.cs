@@ -1,14 +1,11 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.InputSystem;
  
-/// <summary>
-/// Controls player movement, rotation, dashing, shooting, and communicates with the UIManager.
-/// </summary>
 [RequireComponent(typeof(CharacterController))]
 public class PlayerController : MonoBehaviour
 {
     [Header("UI Reference")]
-    [Tooltip("拖入挂载了 PlayerUIManager 的物体")]
     [SerializeField] private PlayerUIManager uiManager;
 
     [Header("Health Settings")]
@@ -30,14 +27,17 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Transform firePoint;
     [SerializeField] private float fireRate = 0.2f;
     
-    // ======== 新增：子弹与换弹设置 ========
     [Header("Ammo Settings")]
-    [SerializeField] private int maxAmmo = 12;       // 最大弹匣12发
-    [SerializeField] private float reloadTime = 1.5f; // 换弹所需时间
+    [SerializeField] private int maxAmmo = 12;       
+    [SerializeField] private float reloadTime = 1.5f; 
     private int currentAmmo;
     private bool isReloading = false;
     private float reloadTimer;
-    // =================================
+
+    // ======== 道具状态变量 ========
+    private bool isInvincible = false;
+    private bool isSuperBuffed = false;
+    // ==============================
  
     private Camera mainCamera;
     private CharacterController characterController;
@@ -60,7 +60,6 @@ public class PlayerController : MonoBehaviour
 
     private void Start()
     {
-        // 初始化数据并刷新一次UI
         currentHealth = maxHealth;
         currentAmmo = maxAmmo;
 
@@ -87,23 +86,13 @@ public class PlayerController : MonoBehaviour
 
     public void OnFire(InputValue value)
     {
-        // 只有按下按键，射击冷却结束，且不在换弹时才能射击
         if (value.isPressed && fireTimer <= 0f && !isReloading)
         {
-            if (currentAmmo > 0)
-            {
-                Shoot();
-            }
-            else
-            {
-                // 如果没子弹了还尝试开火，自动触发换弹
-                StartReload();
-            }
+            if (currentAmmo > 0) Shoot();
+            else StartReload();
         }
     }
 
-    // ======== 新增：手动换弹输入 ========
-    // 前提：在 Input System 中设置一个 Action 叫 Reload，绑定R键
     public void OnReload(InputValue value)
     {
         if (value.isPressed && !isReloading && currentAmmo < maxAmmo)
@@ -111,12 +100,10 @@ public class PlayerController : MonoBehaviour
             StartReload();
         }
     }
-    // =================================
 
     public void OnLook(InputValue value)
     {
         Vector2 mouseScreenPosition = value.Get<Vector2>();
-
         Ray ray = mainCamera.ScreenPointToRay(mouseScreenPosition);
         Plane groundPlane = new Plane(Vector3.up, Vector3.zero);
 
@@ -142,7 +129,7 @@ public class PlayerController : MonoBehaviour
             if (uiManager != null) 
                 uiManager.UpdateDashUI(1f - (dashCooldownTimer / dashCooldown), dashCooldownTimer);
         }
-        else if (!isDashing && uiManager != null) // CD结束
+        else if (!isDashing && uiManager != null) 
         {
             uiManager.UpdateDashUI(1f, 0f);
         }
@@ -153,7 +140,6 @@ public class PlayerController : MonoBehaviour
             if (dashTimeLeft <= 0) isDashing = false;
         }
 
-        // 射击冷却
         if (fireTimer > 0) fireTimer -= Time.deltaTime;
 
         if (isReloading)
@@ -171,16 +157,12 @@ public class PlayerController : MonoBehaviour
     private void Shoot()
     {
         fireTimer = fireRate; 
-        currentAmmo--; // 消耗子弹
-        if (uiManager != null) uiManager.UpdateAmmoUI(currentAmmo, maxAmmo, false); // 更新UI
+        currentAmmo--; 
+        if (uiManager != null) uiManager.UpdateAmmoUI(currentAmmo, maxAmmo, false); 
 
         if (bulletPrefab != null && firePoint != null)
         {
             Instantiate(bulletPrefab, firePoint.position, firePoint.rotation);
-        }
-        else
-        {
-            Debug.LogWarning("Bullet Prefab or Fire Point is not assigned in the Inspector!");
         }
     }
 
@@ -230,17 +212,71 @@ public class PlayerController : MonoBehaviour
         transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
     }
 
-   
     public void TakeDamage(int damage)
     {
+        // 如果处于无敌状态（吃到了护盾道具），则免疫伤害
+        if (isInvincible) return;
+
         currentHealth -= damage;
         currentHealth = Mathf.Max(0, currentHealth);
         if (uiManager != null) uiManager.UpdateHealthUI(currentHealth, maxHealth);
 
         if (currentHealth <= 0)
         {
-            // 死亡逻辑可以在这里添加
             Debug.Log("Player Died!");
         }
     }
+
+    // ======== 新增：道具效果接收函数 ========
+    public void Heal(int amount)
+    {
+        currentHealth += amount;
+        currentHealth = Mathf.Min(maxHealth, currentHealth); // 防止血量超出上限
+        if (uiManager != null) uiManager.UpdateHealthUI(currentHealth, maxHealth);
+    }
+
+    public void ActivateShield(float duration)
+    {
+        StartCoroutine(ShieldRoutine(duration));
+    }
+
+    private IEnumerator ShieldRoutine(float duration)
+    {
+        isInvincible = true;
+        Debug.Log("开启无敌护盾！");
+        // 你可以在这里激活护盾特效物体
+        yield return new WaitForSeconds(duration);
+        isInvincible = false;
+        Debug.Log("护盾结束！");
+    }
+
+    public void ActivateSuperBuff(float duration)
+    {
+        StartCoroutine(SuperBuffRoutine(duration));
+    }
+
+    private IEnumerator SuperBuffRoutine(float duration)
+    {
+        if (isSuperBuffed) yield break; // 防止重复吃Buff导致数值错乱
+
+        isSuperBuffed = true;
+        Debug.Log("开启火力强化！");
+        
+        // 记录原始数值
+        float originalFireRate = fireRate;
+        float originalMoveSpeed = moveSpeed;
+
+        // 强化效果：移速变为 1.5 倍，射击间隔减半（射速翻倍）
+        moveSpeed *= 1.5f;
+        fireRate *= 0.5f;
+
+        yield return new WaitForSeconds(duration);
+
+        // 恢复原始数值
+        moveSpeed = originalMoveSpeed;
+        fireRate = originalFireRate;
+        isSuperBuffed = false;
+        Debug.Log("火力强化结束！");
+    }
+    // =========================================
 }

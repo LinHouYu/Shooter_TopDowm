@@ -7,14 +7,27 @@ public class ScoreManager : MonoBehaviour
 
     [Header("UI显示")]
     public TextMeshProUGUI scoreText;
-    public TextMeshProUGUI timerText; // 专门显示时间的TextMeshPro文本槽位
+    public TextMeshProUGUI timerText; 
 
-    private int score = 0;
-    private float elapsedTime = 0f; // 记录过去的时间（秒）
+    public int score = 0; 
+    private float elapsedTime = 0f; 
+    
+    public int savedPlayerHealth = 100;
+
+    [Header("状态控制")]
+    public bool isTimerRunning = true; 
 
     void Awake()
     {
-        Instance = this;
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(this.gameObject); 
+        }
+        else if (Instance != this)
+        {
+            Destroy(this.gameObject); 
+        }
     }
 
     void Start()
@@ -24,9 +37,11 @@ public class ScoreManager : MonoBehaviour
 
     void Update()
     {
-        // 累加每帧消耗的时间
-        elapsedTime += Time.deltaTime;
-        UpdateTimerUI();
+        if (isTimerRunning)
+        {
+            elapsedTime += Time.deltaTime;
+            UpdateTimerUI();
+        }
     }
 
     public void AddScore(int amount)
@@ -35,7 +50,30 @@ public class ScoreManager : MonoBehaviour
         UpdateScoreUI();
     }
 
-    void UpdateScoreUI()
+    // ==========================================
+    // 新增：每次进入新场景时，用来重新绑定新 UI
+    // ==========================================
+    public void RegisterUI(TextMeshProUGUI newScoreText, TextMeshProUGUI newTimerText)
+    {
+        scoreText = newScoreText;
+        timerText = newTimerText;
+        
+        // 绑定后立刻更新一次显示
+        UpdateScoreUI();
+        UpdateTimerUI();
+    }
+
+    // ==========================================
+    // 新增：重新开始游戏时，重置分数和时间
+    // ==========================================
+    public void ResetData()
+    {
+        score = 0;
+        elapsedTime = 0f;
+        isTimerRunning = true;
+    }
+
+    public void UpdateScoreUI()
     {
         if (scoreText != null)
         {
@@ -47,15 +85,16 @@ public class ScoreManager : MonoBehaviour
     {
         if (timerText != null)
         {
-            // 计算分、秒、毫秒
-            int minutes = Mathf.FloorToInt(elapsedTime / 60f);
-            int seconds = Mathf.FloorToInt(elapsedTime % 60f);
-            int milliseconds = Mathf.FloorToInt((elapsedTime * 1000f) % 1000f);
-
-            // D2 代表保持2位数（如01），D3 代表保持3位数（如005）
-            timerText.text = string.Format("TIME: {0:D2}:{1:D2}:{2:D3}", minutes, seconds, milliseconds);
+            timerText.text = "TIME: " + GetFormattedTime();
         }
     }
-    
-    
+
+    public string GetFormattedTime()
+    {
+        int minutes = Mathf.FloorToInt(elapsedTime / 60f);
+        int seconds = Mathf.FloorToInt(elapsedTime % 60f);
+        int milliseconds = Mathf.FloorToInt((elapsedTime * 1000f) % 1000f);
+
+        return string.Format("{0:D2}:{1:D2}:{2:D3}", minutes, seconds, milliseconds);
+    }
 }

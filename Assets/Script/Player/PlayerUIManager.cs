@@ -70,4 +70,8 @@ public class PlayerUIManager : MonoBehaviour
                 ammoText.text = $"{currentAmmo} / {maxAmmo}";
         }
     }
+    void Awake()
+    {
+        DontDestroyOnLoad(this.gameObject); // 把玩家模型、状态和血量整个传送到下一关
+    }
 }
